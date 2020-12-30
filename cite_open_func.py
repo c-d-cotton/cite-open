@@ -1,55 +1,9 @@
 #!/usr/bin/env python3
-# PYTHON_PREAMBLE_START_STANDARD:{{{
-
-# Christopher David Cotton (c)
-# http://www.cdcotton.com
-
-# modules needed for preamble
-import importlib
 import os
 from pathlib import Path
 import sys
 
-# Get full real filename
-__fullrealfile__ = os.path.abspath(__file__)
-
-# Function to get git directory containing this file
-def getprojectdir(filename):
-    curlevel = filename
-    while curlevel is not '/':
-        curlevel = os.path.dirname(curlevel)
-        if os.path.exists(curlevel + '/.git/'):
-            return(curlevel + '/')
-    return(None)
-
-# Directory of project
-__projectdir__ = Path(getprojectdir(__fullrealfile__))
-
-# Function to call functions from files by their absolute path.
-# Imports modules if they've not already been imported
-# First argument is filename, second is function name, third is dictionary containing loaded modules.
-modulesdict = {}
-def importattr(modulefilename, func, modulesdict = modulesdict):
-    # get modulefilename as string to prevent problems in <= python3.5 with pathlib -> os
-    modulefilename = str(modulefilename)
-    # if function in this file
-    if modulefilename == __fullrealfile__:
-        return(eval(func))
-    else:
-        # add file to moduledict if not there already
-        if modulefilename not in modulesdict:
-            # check filename exists
-            if not os.path.isfile(modulefilename):
-                raise Exception('Module not exists: ' + modulefilename + '. Function: ' + func + '. Filename called from: ' + __fullrealfile__ + '.')
-            # add directory to path
-            sys.path.append(os.path.dirname(modulefilename))
-            # actually add module to moduledict
-            modulesdict[modulefilename] = importlib.import_module(''.join(os.path.basename(modulefilename).split('.')[: -1]))
-
-        # get the actual function from the file and return it
-        return(getattr(modulesdict[modulefilename], func))
-
-# PYTHON_PREAMBLE_END:}}}
+__projectdir__ = Path(os.path.dirname(os.path.realpath(__file__)) + '/')
 
 import re 
 
@@ -193,7 +147,7 @@ def opencitation(filename, pos, externalaltlabelsfiles = []):
         if pagenumbermatch:
             pagenumber = int(pagenumbermatch.group(1))
 
-    importattr(__projectdir__ / Path('cite_open_func.py'), 'openfilename')(thematch.group(2), pagenumber = pagenumber)
+    openfilename(thematch.group(2), pagenumber = pagenumber)
 
     
 def opencitation_ap():
@@ -207,95 +161,9 @@ def opencitation_ap():
     
     args=parser.parse_args()
 
-    importattr(__projectdir__ / Path('cite_open_func.py'), 'opencitation')(args.filename, args.pos, externalaltlabelsfiles = args.externalaltlabelsfiles)
+    opencitation(args.filename, args.pos, externalaltlabelsfiles = args.externalaltlabelsfiles)
     #End argparse:}}}
 
-
-# Change Citation Name:{{{1
-def changecitationname(oldname, newname, parsefilenames, checkfile = None, okulardocdata = None):
-    """
-    Rename file in folder.
-    Check files for references and change if reference to full path or just name.
-
-    Also added option to update docdata folder in okular. However, don't normally use.
-    To update bookmarks in okular, can just add bookmarks xml file to allcode.
-    """
-    import sys
-
-    infreplist = []
-
-    
-    # Replace names:
-    # I might have given the same name to paths so I can't just replace the oldname with the newname. I have to add limits around this.
-    
-    # cover cite patterns by specifying brackets around \citet[]{refname}
-    infreplist.append({'inputterm': '{' + oldname + '}', 'outputterm': '{' + newname + '}', 'filenames': parsefilenames})
-    # pattern for bib file
-    infreplist.append({'inputterm': '{' + oldname + ',', 'outputterm': '{' + newname + ',', 'filenames': parsefilenames})
-    # pattern for page numbers file without anything around it
-    infreplist.append({'inputterm': oldname, 'outputterm': newname, 'filenames': [__projectdir__ / Path('refs/pagenumbers.txt')]})
-
-    # Now replace files (note that if there isn't a file, I may as well just use infrep)
-    filenames = importattr(__projectdir__ / Path('cite_open_func.py'), 'getfilenames')(oldname)    
-
-    if len(filenames) == 0:
-        print('Warning: There does not exist a file with this name.')
-
-    if len(filenames) > 1:
-        print('More than one file with this name: ' + str(len(filenames)))
-        sys.exit(1)
-
-    if len(filenames) == 1:
-        oldfilename = filenames[0]
-        newfilename = os.path.join(os.path.dirname(oldfilename), newname + '.' +  '.'.join(os.path.basename(oldfilename).split('.')[1: ]))
-
-        # okular unused:{{{
-        # get change names of file for pdf in docdata folder in okular
-        # okular is a file viewer for linux
-        if okulardocdata is not None:
-            okulardocdatafiles = os.listdir(okulardocdata)
-
-            # get files matching old name
-            oldnamefiles = [filename for filename in okulardocdatafiles if filename.endswith(oldname + '.pdf.xml')]
-            if len(oldnamefiles) > 1:
-                print('Multiple files in okular folder ending in oldname pattern. Files:')
-                print(oldnamefiles)
-                print('Overwrite name for all files?')
-                importattr(__projectdir__ / Path('submodules/python-pause/pausecall.py'), 'confirm')()
-
-            # get files matching new name
-            newnamefiles = [filename for filename in okulardocdatafiles if filename.endswith(newname + '.pdf.xml')]
-            if len(newnamefiles):
-                print('Old version of new filename exists in okular folder.')
-                print(newnamefiles)
-                print('Delete these files?')
-                importattr(__projectdir__ / Path('submodules/python-pause/pausecall.py'), 'confirm')()
-                for filename in newnamefiles:
-                    os.remove(os.path.join(okulardocdata, filename))
-        # okular unused:}}}
-        
-        infreplist.append({'inputterm': oldfilename, 'outputterm': newfilename, 'filenames': parsefilenames})
-
-    importattr(__projectdir__ / Path('submodules/infrep/infrep_func.py'), 'infrep')(infreplist, checkfile = checkfile)
-
-    if len(filenames) == 1:
-        # Change name of file:
-        os.rename(oldfilename, newfilename)
-
-
-
-def changecitationname_ap(filenames, checkfile = None, okulardocdata = None):
-    #Argparse:{{{
-    import argparse
-    
-    parser=argparse.ArgumentParser()
-    parser.add_argument("oldname")
-    parser.add_argument("newname")
-    
-    args=parser.parse_args()
-    #End argparse:}}}
-
-    importattr(__projectdir__ / Path('cite_open_func.py'), 'changecitationname')(args.oldname, args.newname, filenames, checkfile = None, okulardocdata = okulardocdata)
 
 # Save links to all citation names:{{{1
 def citationnamefolderlinks(bibnames, linkfolder):
@@ -324,7 +192,7 @@ def citationnamefolderlinks(bibnames, linkfolder):
             citationnames.append(match.group(1))
 
     for citationname in citationnames:
-        filenames = importattr(__projectdir__ / Path('cite_open_func.py'), 'getfilenames')(citationname)
+        filenames = getfilenames(citationname)
 
         if len(filenames) >= 2:
             print('ERROR: Multiple matches for citation. Citation: ' + citationname + '. Matches: ' + ', '.join(filenames))
